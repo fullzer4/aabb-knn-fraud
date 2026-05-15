@@ -1,0 +1,57 @@
+cc_library(
+    name = "http",
+    hdrs = ["http.hpp"],
+    includes = ["."],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "vec",
+    hdrs = ["vec.hpp"],
+    includes = ["."],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "dataset",
+    hdrs = ["dataset.hpp"],
+    includes = ["."],
+    deps = [
+        ":vec",
+        "@zlib",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "ivf",
+    hdrs = ["ivf.hpp"],
+    includes = ["."],
+    deps = [
+        ":dataset",
+        ":vec",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "vectorize",
+    hdrs = ["vectorize.hpp"],
+    includes = ["."],
+    deps = [
+        ":vec",
+        "@simdjson",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "rinha",
+    srcs = ["main.cpp"],
+    deps = [
+        ":http",
+        ":ivf",
+        ":vectorize",
+    ],
+    visibility = ["//visibility:public"],
+)

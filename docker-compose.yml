@@ -1,0 +1,81 @@
+services:
+  api1:
+    build:
+      context: .
+      network: host
+    environment:
+      - SOCKET_PATH=/var/run/rinha/api1.sock
+      - MALLOC_ARENA_MAX=1
+      - NCLUSTERS=${NCLUSTERS:-1024}
+      - NPROBE=${NPROBE:-20}
+    volumes:
+      - sockets:/var/run/rinha
+      - ./rinha-de-backend-2026/resources:/resources:ro
+    security_opt:
+      - seccomp:unconfined
+    logging:
+      driver: "none"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          cpus: "0.40"
+          memory: "155MB"
+
+  api2:
+    build:
+      context: .
+      network: host
+    environment:
+      - SOCKET_PATH=/var/run/rinha/api2.sock
+      - MALLOC_ARENA_MAX=1
+      - NCLUSTERS=${NCLUSTERS:-1024}
+      - NPROBE=${NPROBE:-20}
+    volumes:
+      - sockets:/var/run/rinha
+      - ./rinha-de-backend-2026/resources:/resources:ro
+    depends_on:
+      - api1
+    security_opt:
+      - seccomp:unconfined
+    logging:
+      driver: "none"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          cpus: "0.40"
+          memory: "155MB"
+
+  haproxy:
+    image: docker.io/library/haproxy:3.1-alpine
+    ports:
+      - "9999:9999"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - sockets:/var/run/rinha
+    depends_on:
+      - api1
+      - api2
+    security_opt:
+      - seccomp:unconfined
+    logging:
+      driver: "none"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          cpus: "0.20"
+          memory: "40MB"
+
+volumes:
+  sockets:

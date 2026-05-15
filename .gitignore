@@ -1,0 +1,12 @@
+.direnv
+
+/bazel-*
+
+build/
+
+.claude/
+
+MODULE.bazel.lock
+
+bench/test-data.json
+bench/results.json

@@ -1,0 +1,46 @@
+load("@bazel_skylib//rules:write_file.bzl", "write_file")
+
+_SCRIPT = """
+set -euo pipefail
+ROOT="$BUILD_WORKSPACE_DIRECTORY"
+URL="http://localhost:9999"
+B="\\033[1m" G="\\033[32m" R="\\033[31m" Z="\\033[0m"
+info()  { printf "${B}${G}>>>${Z} %s\\n" "$*"; }
+error() { printf "${B}${R}>>>${Z} %s\\n" "$*"; }
+cleanup() { info "Stopping containers..."; docker compose -f "$ROOT/docker-compose.yml" down -v --remove-orphans 2>/dev/null || true; }
+trap cleanup EXIT
+info "Building and starting compose stack..."
+docker compose -f "$ROOT/docker-compose.yml" up -d --build 2>&1
+info "Waiting for API..."
+for i in $(seq 1 120); do
+    curl -sf "$URL/ready" > /dev/null 2>&1 && { info "API ready"; break; }
+    [ "$i" -eq 120 ] && { error "API not ready after 120s"; docker compose -f "$ROOT/docker-compose.yml" logs; exit 1; }
+    sleep 1
+done
+info "Running rinha test (120s ramp to 900 rps)..."
+K6_NO_USAGE_REPORT=true k6 run "$ROOT/bench/test.js"
+echo ""
+if [ -f "$ROOT/bench/results.json" ]; then
+    info "Results:"
+    cat "$ROOT/bench/results.json" | jq .scoring
+fi
+"""
+
+write_file(
+    name = "gen_bench",
+    out = "run_bench.sh",
+    is_executable = True,
+    content = [
+        "#!/usr/bin/env bash",
+        _SCRIPT,
+    ],
+)
+
+sh_binary(
+    name = "bench",
+    srcs = [":gen_bench"],
+    data = [
+        "test.js",
+        "test-data.json",
+    ],
+)

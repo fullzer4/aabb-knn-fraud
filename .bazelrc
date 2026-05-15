@@ -1,0 +1,28 @@
+common --enable_bzlmod
+
+build --cxxopt=-std=c++23
+build --action_env=CC
+build --action_env=CXX
+build --action_env=PATH
+
+build:release -c opt
+build:release --cxxopt=-O3
+build:release --cxxopt=-march=haswell
+build:release --cxxopt=-mtune=haswell
+build:release --cxxopt=-mavx2
+build:release --cxxopt=-mfma
+build:release --cxxopt=-flto
+build:release --cxxopt=-fno-exceptions
+build:release --cxxopt=-fno-rtti
+build:release --cxxopt=-DNDEBUG
+build:release --linkopt=-flto
+build:release --linkopt=-s
+
+build:profile -c opt
+build:profile --cxxopt=-O2
+build:profile --cxxopt=-march=haswell
+build:profile --cxxopt=-g
+build:profile --cxxopt=-fno-omit-frame-pointer
+build:profile --linkopt=-g
+
+test --test_output=errors

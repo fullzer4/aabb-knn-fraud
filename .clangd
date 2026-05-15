@@ -1,0 +1,8 @@
+CompileFlags:
+  CompilationDatabase: bazel-out/
+  Add:
+    - "-std=c++23"
+    - "-xc++"
+
+Diagnostics:
+  UnusedIncludes: Strict
