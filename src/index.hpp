@@ -78,6 +78,7 @@ public:
         ::close(fd);
         if (mapped_ == MAP_FAILED) { mapped_ = nullptr; return false; }
         ::madvise(mapped_, mapped_size_, MADV_WILLNEED);
+        ::madvise(mapped_, mapped_size_, MADV_HUGEPAGE);
 
         const auto* base = static_cast<const uint8_t*>(mapped_);
         header_ = reinterpret_cast<const IndexHeader*>(base);
@@ -169,7 +170,7 @@ private:
             const Vec16* vecs = vectors_ + base;
 
             for (uint32_t j = 0; j < cm.vec_count; ++j) {
-                if (j + 4 < cm.vec_count) __builtin_prefetch(&vecs[j + 4], 0, 0);
+                if (j + 8 < cm.vec_count) __builtin_prefetch(&vecs[j + 8], 0, 1);
                 topk.push(distance(q, vecs[j]), base + j);
             }
         }
