@@ -16,8 +16,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.45"
-          memory: "155MB"
+          cpus: "0.47"
+          memory: "160MB"
 
   api2:
     image: ghcr.io/fullzer4/aabb-knn-fraud:latest
@@ -38,8 +38,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.45"
-          memory: "155MB"
+          cpus: "0.47"
+          memory: "160MB"
 
   haproxy:
     image: docker.io/library/haproxy:3.1-alpine
@@ -62,8 +62,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.10"
-          memory: "40MB"
+          cpus: "0.06"
+          memory: "30MB"
 
 volumes:
   sockets:
