@@ -77,7 +77,6 @@ public:
         mapped_ = ::mmap(nullptr, mapped_size_, PROT_READ, MAP_PRIVATE | MAP_POPULATE, fd, 0);
         ::close(fd);
         if (mapped_ == MAP_FAILED) { mapped_ = nullptr; return false; }
-        ::madvise(mapped_, mapped_size_, MADV_WILLNEED);
         ::madvise(mapped_, mapped_size_, MADV_HUGEPAGE);
 
         const auto* base = static_cast<const uint8_t*>(mapped_);
@@ -112,6 +111,8 @@ public:
         return fraud;
     }
 
+    static constexpr int32_t kEarlyThreshold = 1'960'000;
+
     [[gnu::hot]]
     TopK search(const Vec16& q, uint8_t partition_key) const noexcept {
         TopK topk;
@@ -121,11 +122,16 @@ public:
         if (primary != 0xFFFF)
             search_partition(partitions_[primary], q, topk);
 
+        if (topk.worst() <= kEarlyThreshold)
+            return topk;
+
         for (uint32_t i = 0; i < header_->num_partitions; ++i) {
             if (i == primary) continue;
             if (aabb_lower_bound(q, part_bbox_min_[i], part_bbox_max_[i]) > topk.worst())
                 continue;
             search_partition(partitions_[i], q, topk);
+            if (topk.worst() <= kEarlyThreshold)
+                break;
         }
 
         return topk;
