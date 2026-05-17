@@ -18,8 +18,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.47"
-          memory: "160MB"
+          cpus: "0.45"
+          memory: "155MB"
 
   api2:
     build: .
@@ -42,8 +42,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.47"
-          memory: "160MB"
+          cpus: "0.45"
+          memory: "155MB"
 
   haproxy:
     image: docker.io/library/haproxy:3.1-alpine
@@ -66,8 +66,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.06"
-          memory: "30MB"
+          cpus: "0.10"
+          memory: "40MB"
 
 volumes:
   sockets:
