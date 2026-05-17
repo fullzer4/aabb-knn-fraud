@@ -3,6 +3,8 @@ services:
     build: .
     environment:
       - SOCKET_PATH=/var/run/rinha/api1.sock
+      - MALLOC_ARENA_MAX=1
+      - MALLOC_TRIM_THRESHOLD_=-1
     volumes:
       - sockets:/var/run/rinha
     security_opt:
@@ -23,6 +25,8 @@ services:
     build: .
     environment:
       - SOCKET_PATH=/var/run/rinha/api2.sock
+      - MALLOC_ARENA_MAX=1
+      - MALLOC_TRIM_THRESHOLD_=-1
     volumes:
       - sockets:/var/run/rinha
     depends_on:
@@ -67,3 +71,8 @@ services:
 
 volumes:
   sockets:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=10m
