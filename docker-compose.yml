@@ -1,0 +1,69 @@
+services:
+  api1:
+    image: ghcr.io/fullzer4/aabb-knn-fraud:latest
+    environment:
+      - SOCKET_PATH=/var/run/rinha/api1.sock
+    volumes:
+      - sockets:/var/run/rinha
+    security_opt:
+      - seccomp:unconfined
+    logging:
+      driver: "none"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          cpus: "0.45"
+          memory: "155MB"
+
+  api2:
+    image: ghcr.io/fullzer4/aabb-knn-fraud:latest
+    environment:
+      - SOCKET_PATH=/var/run/rinha/api2.sock
+    volumes:
+      - sockets:/var/run/rinha
+    depends_on:
+      - api1
+    security_opt:
+      - seccomp:unconfined
+    logging:
+      driver: "none"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          cpus: "0.45"
+          memory: "155MB"
+
+  haproxy:
+    image: docker.io/library/haproxy:3.1-alpine
+    ports:
+      - "9999:9999"
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - sockets:/var/run/rinha
+    depends_on:
+      - api1
+      - api2
+    security_opt:
+      - seccomp:unconfined
+    logging:
+      driver: "none"
+    ulimits:
+      nofile:
+        soft: 65535
+        hard: 65535
+    deploy:
+      resources:
+        limits:
+          cpus: "0.10"
+          memory: "40MB"
+
+volumes:
+  sockets:
