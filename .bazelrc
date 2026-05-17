@@ -1,6 +1,13 @@
 common --enable_bzlmod
 
 build --cxxopt=-std=c++23
+build --host_cxxopt=-std=c++23
+build --cxxopt=-march=haswell
+build --host_cxxopt=-march=haswell
+build --cxxopt=-mavx2
+build --host_cxxopt=-mavx2
+build --cxxopt=-mfma
+build --host_cxxopt=-mfma
 build --action_env=CC
 build --action_env=CXX
 build --action_env=PATH

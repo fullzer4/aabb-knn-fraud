@@ -24,11 +24,10 @@ cc_library(
 )
 
 cc_library(
-    name = "ivf",
-    hdrs = ["ivf.hpp"],
+    name = "index",
+    hdrs = ["index.hpp"],
     includes = ["."],
     deps = [
-        ":dataset",
         ":vec",
     ],
     visibility = ["//visibility:public"],
@@ -46,11 +45,31 @@ cc_library(
 )
 
 cc_binary(
+    name = "preprocess",
+    srcs = ["preprocess.cpp"],
+    deps = [
+        ":dataset",
+        ":index",
+        ":vec",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "build_index",
+    srcs = ["//tests:references"],
+    outs = ["index.bin"],
+    tools = [":preprocess"],
+    cmd = "$(location :preprocess) $(location //tests:references) $@",
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
     name = "rinha",
     srcs = ["main.cpp"],
     deps = [
         ":http",
-        ":ivf",
+        ":index",
         ":vectorize",
     ],
     visibility = ["//visibility:public"],

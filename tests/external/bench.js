@@ -1,8 +1,6 @@
 import http from 'k6/http';
-import { check } from 'k6';
 import { SharedArray } from 'k6/data';
 import { Counter } from 'k6/metrics';
-import { textSummary } from 'https://jslib.k6.io/k6-summary/0.0.1/index.js';
 import exec from 'k6/execution';
 
 const testData = new SharedArray('test-data', function () {
@@ -64,12 +62,15 @@ export default function () {
 
     if (res.status === 200) {
         const body = JSON.parse(res.body);
+        // Per-request scoring: compare against expectedApproved
+        // expectedApproved === true  --> legit transaction
+        // expectedApproved === false --> fraud transaction
         if (expectedApproved === body.approved) {
-            if (body.approved) tnCount.add(1);
-            else tpCount.add(1);
+            if (body.approved) tnCount.add(1); // correctly approved legit
+            else tpCount.add(1);               // correctly denied fraud
         } else {
-            if (body.approved) fnCount.add(1);
-            else fpCount.add(1);
+            if (body.approved) fnCount.add(1); // fraud approved (missed fraud)
+            else fpCount.add(1);               // legit denied (false block)
         }
     } else {
         errorCount.add(1);
@@ -98,11 +99,14 @@ export function handleSummary(data) {
 
     const N = tp + tn + fp + fn + errs;
 
+    // Erros ponderados (para a fórmula log) e contagem pura (para o corte)
     const E = (fp * 1) + (fn * 3) + (errs * 5);
     const failures = fp + fn + errs;
     const epsilon = N > 0 ? E / N : 0;
     const failureRate = N > 0 ? failures / N : 0;
 
+    // Score P99 (log, com teto em P99_MIN_MS e corte em P99_MAX_MS).
+    // p99=0 = nenhuma resposta completou; retorna 0 pra evitar Infinity no JSON.
     let p99Score;
     let p99CutTriggered = false;
     if (p99 <= 0) {
@@ -114,6 +118,7 @@ export function handleSummary(data) {
         p99Score = K * Math.log10(T_MAX_MS / Math.max(p99, P99_MIN_MS));
     }
 
+    // Score detecção (log com penalidade absoluta, ou corte em -3000 se falhas > 15%)
     let detScore;
     let rateComponent = 0;
     let absolutePenalty = 0;
@@ -158,7 +163,6 @@ export function handleSummary(data) {
     };
 
     return {
-        'bench/results.json': JSON.stringify(result, null, 2),
-        stdout: textSummary(data, { indent: ' ', enableColors: true }),
+        'results.json': JSON.stringify(result, null, 2),
     };
 }

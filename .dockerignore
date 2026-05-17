@@ -1,6 +1,8 @@
 bazel-*
 rinha-de-backend-2026
-rinha_backend2026
+outras-impl
 bench
+tests/internal
+tests/external
 .git
 .direnv

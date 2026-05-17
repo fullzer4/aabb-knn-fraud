@@ -1,0 +1,5 @@
+filegroup(
+    name = "references",
+    srcs = ["references.json.gz"],
+    visibility = ["//visibility:public"],
+)

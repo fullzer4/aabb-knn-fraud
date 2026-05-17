@@ -1,0 +1,26 @@
+filegroup(
+    name = "testdata",
+    srcs = ["testdata.json"],
+)
+
+cc_test(
+    name = "accuracy_test",
+    srcs = ["accuracy_test.cpp"],
+    timeout = "long",
+    size = "large",
+    deps = [
+        "//src:index",
+        "//src:vec",
+        "//src:vectorize",
+        "@googletest//:gtest_main",
+        "@simdjson",
+    ],
+    data = [
+        "//src:build_index",
+        ":testdata",
+    ],
+    env = {
+        "INDEX_PATH": "$(rootpath //src:build_index)",
+        "TESTDATA_PATH": "$(rootpath :testdata)",
+    },
+)

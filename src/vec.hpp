@@ -1,142 +1,88 @@
 #pragma once
 
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdint>
-#include <cstring>
+#include <limits>
+#include <span>
 #include <immintrin.h>
 
 namespace rinha {
 
-static constexpr int kDims    = 14;
-static constexpr int kDimsPad = 16; // padded to 16 for AVX2 alignment (2 × 8)
-static constexpr int kK       = 5;
+inline constexpr int   kDims      = 14;
+inline constexpr int   kDimsPad   = 16;
+inline constexpr int   kK         = 5;
+inline constexpr float kQuantScale = 10000.0f;
 
-using Vec16  = uint16_t[kDimsPad]; // float16 storage
-using Vec32  = float[kDimsPad];    // float32 working
+struct alignas(32) Vec16 : std::array<int16_t, kDimsPad> {
+    using std::array<int16_t, kDimsPad>::array;
+};
 
-inline float f16_to_f32(uint16_t h) {
-    __m128i v = _mm_set1_epi16(static_cast<short>(h));
-    __m128  f = _mm_cvtph_ps(v);
-    return _mm_cvtss_f32(f);
+inline int16_t quantize_f32(float v) noexcept {
+    float scaled = std::roundf(v * kQuantScale);
+    return static_cast<int16_t>(std::clamp(scaled, -32768.0f, 32767.0f));
 }
 
-inline uint16_t f32_to_f16(float f) {
-    __m128  v = _mm_set_ss(f);
-    __m128i h = _mm_cvtps_ph(v, _MM_FROUND_TO_NEAREST_INT);
-    return static_cast<uint16_t>(_mm_extract_epi16(h, 0));
+inline int16_t quantize_f64(double v) noexcept {
+    double scaled = std::round(v * static_cast<double>(kQuantScale));
+    return static_cast<int16_t>(std::clamp(scaled, -32768.0, 32767.0));
 }
 
-inline void vec_f32_to_f16(const float* src, uint16_t* dst) {
-    __m256 lo = _mm256_load_ps(src);
-    __m256 hi = _mm256_load_ps(src + 8);
-    __m128i lo16 = _mm256_cvtps_ph(lo, _MM_FROUND_TO_NEAREST_INT);
-    __m128i hi16 = _mm256_cvtps_ph(hi, _MM_FROUND_TO_NEAREST_INT);
-    _mm_store_si128(reinterpret_cast<__m128i*>(dst),     lo16);
-    _mm_store_si128(reinterpret_cast<__m128i*>(dst + 8), hi16);
+inline void quantize_vec(std::span<const float, kDimsPad> src, Vec16& dst) noexcept {
+    for (std::size_t i = 0; i < kDimsPad; ++i)
+        dst[i] = quantize_f32(src[i]);
 }
 
 [[gnu::always_inline, gnu::hot]]
-inline float distance_f16(const uint16_t* __restrict__ ref, const float* __restrict__ query) {
-    __m256 r0 = _mm256_cvtph_ps(_mm_load_si128(reinterpret_cast<const __m128i*>(ref)));
-    __m256 r1 = _mm256_cvtph_ps(_mm_load_si128(reinterpret_cast<const __m128i*>(ref + 8)));
+inline int32_t distance(const Vec16& a, const Vec16& b) noexcept {
+    __m256i va   = _mm256_load_si256(reinterpret_cast<const __m256i*>(a.data()));
+    __m256i vb   = _mm256_load_si256(reinterpret_cast<const __m256i*>(b.data()));
+    __m256i diff = _mm256_sub_epi16(va, vb);
+    __m256i prod = _mm256_madd_epi16(diff, diff);
 
-    __m256 q0 = _mm256_load_ps(query);
-    __m256 q1 = _mm256_load_ps(query + 8);
-
-    __m256 d0 = _mm256_sub_ps(r0, q0);
-    __m256 d1 = _mm256_sub_ps(r1, q1);
-
-    __m256 acc = _mm256_fmadd_ps(d0, d0, _mm256_mul_ps(d1, d1));
-
-    __m128 hi  = _mm256_extractf128_ps(acc, 1);
-    __m128 lo  = _mm256_castps256_ps128(acc);
-    __m128 sum = _mm_add_ps(lo, hi);          // 4 floats
-    sum = _mm_hadd_ps(sum, sum);              // 2 floats
-    sum = _mm_hadd_ps(sum, sum);              // 1 float
-    return _mm_cvtss_f32(sum);
+    __m128i hi  = _mm256_extracti128_si256(prod, 1);
+    __m128i lo  = _mm256_castsi256_si128(prod);
+    __m128i sum = _mm_add_epi32(lo, hi);
+    sum = _mm_hadd_epi32(sum, sum);
+    sum = _mm_hadd_epi32(sum, sum);
+    return _mm_cvtsi128_si32(sum);
 }
 
+// AABB lower bound: LB = Σ max(0, bmin[d]-q[d], q[d]-bmax[d])²
+// Guarantees LB ≤ d(q, v) for any v in the box zero false pruning.
 [[gnu::always_inline, gnu::hot]]
-inline void distance_f16_x4(const uint16_t* __restrict__ vecs,
-                            const float* __restrict__ query,
-                            float* __restrict__ out) {
-    __m256 q0 = _mm256_load_ps(query);
-    __m256 q1 = _mm256_load_ps(query + 8);
+inline int32_t aabb_lower_bound(const Vec16& q, const Vec16& bmin, const Vec16& bmax) noexcept {
+    __m256i vq   = _mm256_load_si256(reinterpret_cast<const __m256i*>(q.data()));
+    __m256i vmin = _mm256_load_si256(reinterpret_cast<const __m256i*>(bmin.data()));
+    __m256i vmax = _mm256_load_si256(reinterpret_cast<const __m256i*>(bmax.data()));
+    __m256i zero = _mm256_setzero_si256();
 
-    __m256 r0_0 = _mm256_cvtph_ps(_mm_load_si128(reinterpret_cast<const __m128i*>(vecs)));
-    __m256 r0_1 = _mm256_cvtph_ps(_mm_load_si128(reinterpret_cast<const __m128i*>(vecs + 8)));
-    __m256 r1_0 = _mm256_cvtph_ps(_mm_load_si128(reinterpret_cast<const __m128i*>(vecs + kDimsPad)));
-    __m256 r1_1 = _mm256_cvtph_ps(_mm_load_si128(reinterpret_cast<const __m128i*>(vecs + kDimsPad + 8)));
-    __m256 r2_0 = _mm256_cvtph_ps(_mm_load_si128(reinterpret_cast<const __m128i*>(vecs + 2*kDimsPad)));
-    __m256 r2_1 = _mm256_cvtph_ps(_mm_load_si128(reinterpret_cast<const __m128i*>(vecs + 2*kDimsPad + 8)));
-    __m256 r3_0 = _mm256_cvtph_ps(_mm_load_si128(reinterpret_cast<const __m128i*>(vecs + 3*kDimsPad)));
-    __m256 r3_1 = _mm256_cvtph_ps(_mm_load_si128(reinterpret_cast<const __m128i*>(vecs + 3*kDimsPad + 8)));
+    __m256i below = _mm256_max_epi16(_mm256_sub_epi16(vmin, vq), zero);
+    __m256i above = _mm256_max_epi16(_mm256_sub_epi16(vq, vmax), zero);
+    __m256i gap   = _mm256_max_epi16(below, above);
+    __m256i prod  = _mm256_madd_epi16(gap, gap);
 
-    __m256 d0, d1, acc;
-
-    d0 = _mm256_sub_ps(r0_0, q0); d1 = _mm256_sub_ps(r0_1, q1);
-    acc = _mm256_fmadd_ps(d0, d0, _mm256_mul_ps(d1, d1));
-    __m128 h = _mm256_extractf128_ps(acc, 1);
-    __m128 s = _mm_add_ps(_mm256_castps256_ps128(acc), h);
-    s = _mm_hadd_ps(s, s); s = _mm_hadd_ps(s, s);
-    out[0] = _mm_cvtss_f32(s);
-
-    d0 = _mm256_sub_ps(r1_0, q0); d1 = _mm256_sub_ps(r1_1, q1);
-    acc = _mm256_fmadd_ps(d0, d0, _mm256_mul_ps(d1, d1));
-    h = _mm256_extractf128_ps(acc, 1);
-    s = _mm_add_ps(_mm256_castps256_ps128(acc), h);
-    s = _mm_hadd_ps(s, s); s = _mm_hadd_ps(s, s);
-    out[1] = _mm_cvtss_f32(s);
-
-    d0 = _mm256_sub_ps(r2_0, q0); d1 = _mm256_sub_ps(r2_1, q1);
-    acc = _mm256_fmadd_ps(d0, d0, _mm256_mul_ps(d1, d1));
-    h = _mm256_extractf128_ps(acc, 1);
-    s = _mm_add_ps(_mm256_castps256_ps128(acc), h);
-    s = _mm_hadd_ps(s, s); s = _mm_hadd_ps(s, s);
-    out[2] = _mm_cvtss_f32(s);
-
-    d0 = _mm256_sub_ps(r3_0, q0); d1 = _mm256_sub_ps(r3_1, q1);
-    acc = _mm256_fmadd_ps(d0, d0, _mm256_mul_ps(d1, d1));
-    h = _mm256_extractf128_ps(acc, 1);
-    s = _mm_add_ps(_mm256_castps256_ps128(acc), h);
-    s = _mm_hadd_ps(s, s); s = _mm_hadd_ps(s, s);
-    out[3] = _mm_cvtss_f32(s);
-}
-
-[[gnu::always_inline]]
-inline float distance_f32(const float* ref, const float* query) {
-    __m256 r0 = _mm256_load_ps(ref);
-    __m256 r1 = _mm256_load_ps(ref + 8);
-
-    __m256 q0 = _mm256_load_ps(query);
-    __m256 q1 = _mm256_load_ps(query + 8);
-
-    __m256 d0 = _mm256_sub_ps(r0, q0);
-    __m256 d1 = _mm256_sub_ps(r1, q1);
-
-    __m256 acc = _mm256_fmadd_ps(d0, d0, _mm256_mul_ps(d1, d1));
-
-    __m128 hi  = _mm256_extractf128_ps(acc, 1);
-    __m128 lo  = _mm256_castps256_ps128(acc);
-    __m128 sum = _mm_add_ps(lo, hi);
-    sum = _mm_hadd_ps(sum, sum);
-    sum = _mm_hadd_ps(sum, sum);
-    return _mm_cvtss_f32(sum);
+    __m128i hi  = _mm256_extracti128_si256(prod, 1);
+    __m128i lo  = _mm256_castsi256_si128(prod);
+    __m128i sum = _mm_add_epi32(lo, hi);
+    sum = _mm_hadd_epi32(sum, sum);
+    sum = _mm_hadd_epi32(sum, sum);
+    return _mm_cvtsi128_si32(sum);
 }
 
 struct TopK {
-    float    dists[kK];
-    uint32_t idxs[kK];
+    std::array<int32_t, kK>  dists;
+    std::array<uint32_t, kK> idxs;
 
-    void reset() {
-        for (int i = 0; i < kK; ++i) {
-            dists[i] = __FLT_MAX__;
-            idxs[i]  = 0;
-        }
+    void reset() noexcept {
+        dists.fill(std::numeric_limits<int32_t>::max());
+        idxs.fill(0);
     }
 
     [[gnu::always_inline, gnu::hot]]
-    void push(float d, uint32_t idx) {
-        if (d >= dists[kK - 1]) return;  // fast reject
+    void push(int32_t d, uint32_t idx) noexcept {
+        if (d >= dists.back()) return;
         int pos = kK - 1;
         while (pos > 0 && d < dists[pos - 1]) {
             dists[pos] = dists[pos - 1];
@@ -147,14 +93,24 @@ struct TopK {
         idxs[pos]  = idx;
     }
 
-    [[gnu::always_inline]]
-    float threshold() const { return dists[kK - 1]; }
+    [[nodiscard]] int32_t worst() const noexcept { return dists.back(); }
 };
 
-inline float clamp01(float x) {
-    if (x < 0.0f) return 0.0f;
-    if (x > 1.0f) return 1.0f;
-    return x;
+constexpr uint8_t compute_partition_key(std::span<const float, kDimsPad> f) noexcept {
+    uint8_t key = 0;
+    if (f[5]  >= 0.0f)  key |= 0x01;
+    if (f[9]  >  0.5f)  key |= 0x02;
+    if (f[10] >  0.5f)  key |= 0x04;
+    if (f[11] >  0.5f)  key |= 0x08;
+    int mcc_bin = std::clamp(static_cast<int>(f[12] * 4.0f), 0, 3);
+    key |= static_cast<uint8_t>(mcc_bin << 4);
+    if (f[0]  >  0.5f)  key |= 0x40;
+    if (f[8]  >  0.25f) key |= 0x80;
+    return key;
+}
+
+constexpr float clamp01(float x) noexcept {
+    return std::clamp(x, 0.0f, 1.0f);
 }
 
 } // namespace rinha

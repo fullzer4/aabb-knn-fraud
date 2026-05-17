@@ -1,12 +1,7 @@
 .direnv
-
 /bazel-*
-
 build/
-
 .claude/
-
 MODULE.bazel.lock
-
-bench/test-data.json
-bench/results.json
+rinha-de-backend-2026/
+tests/external/results.json
