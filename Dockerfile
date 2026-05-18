@@ -13,9 +13,9 @@ COPY . .
 
 RUN bazel build //src:rinha //src:build_index --config=release
 
-FROM docker.io/library/debian:trixie-slim
+FROM scratch
 
-COPY --from=builder /app/bazel-bin/src/rinha /usr/local/bin/rinha
+COPY --from=builder /app/bazel-bin/src/rinha /rinha
 COPY --from=builder /app/bazel-bin/src/index.bin /resources/index.bin
 
-CMD ["rinha"]
+ENTRYPOINT ["/rinha"]

@@ -22,8 +22,11 @@ build:release --cxxopt=-flto
 build:release --cxxopt=-fno-exceptions
 build:release --cxxopt=-fno-rtti
 build:release --cxxopt=-DNDEBUG
+build:release --cxxopt=-funroll-loops
+build:release --cxxopt=-fno-math-errno
 build:release --linkopt=-flto
 build:release --linkopt=-s
+build:release --linkopt=-static
 
 build:profile -c opt
 build:profile --cxxopt=-O2
